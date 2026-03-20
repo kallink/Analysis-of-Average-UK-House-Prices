@@ -1,0 +1,201 @@
+---
+title: "MTH6139 Time Series" 
+subtitle: "Coursework 1_230226562" 
+author: "Kallinken Skantharuban" 
+date: "Spring term 2026" 
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: spacelab 
+    highlight: tango
+---
+ 
+```{r, echo=FALSE}
+# This code will display the QMUL logo at the top right of the page
+# Do not change this code
+htmltools::img(src = knitr::image_uri("images/QMlogo.png"),
+               alt = 'logo',
+               style = 'position:absolute; top:0; right:0; padding:10px; width:20%;')
+```
+
+# **0. Libraries**
+These two libraries were used in the analysis of average UK House Prices. The `zoo` library is used to handle the conversion of dates into a format suitable for Prophet and the `prophet` library is Meta's tool for forecasting.
+
+```{r message=FALSE, warning=FALSE}
+library(zoo)
+library(prophet)
+```
+
+
+# **1. Introduction**
+UK house prices are one of the key economic indicators in the United Kingdom. They reflect the state of the economy, consumer confidence and interest rates in the UK economy, making this an interesting dataset to analyse.
+
+In this project I will explore the trends and patterns in monthly UK average house prices from 1990 to 2025 and apply Meta's Prophet forecasting model, which is a tool designed to detect trends and seasonality in time series data, to predict future average house prices.
+
+![Georgian terrace houses in London](images/housing.jpg)
+*Source: Pexels*
+
+
+
+# **2. About the Dataset**
+The dataset used in this project will be referred to as `ukHousePrices`. This dataset contains 432 data entries, which are monthly observations of average UK house prices from January 1990 to December 2025. `ukHousePrices` is measured in pounds sterling (£).
+
+## 2.1 Dataset Overview
+```{r}
+ukHousePrices <- read.csv("data/ukHousePrices.csv")
+summary(ukHousePrices)
+```
+The summary above shows that the UK house prices has averaged approximately £143649, with a minimum of £49018 and a maximum of £272043. This suggests that there has been a significant increase in the value of UK houses and the UK property market between 1990 and 2025.
+
+## 2.2 Data Preparation
+In order to analyse and use Prophet for the dataset, I had to convert it into a dataframe with two columns, where `ds` contains the dates and `y` contains the house prices.
+
+```{r}
+ukHousePrices_dataframe <- data.frame(
+    ds = as.Date(ukHousePrices$Date, format = "%d/%m/%Y"),
+    y = as.numeric(ukHousePrices$Price))
+head(ukHousePrices_dataframe)
+tail(ukHousePrices_dataframe)
+```
+
+The dataframe runs from January 1990 to December 2025 with a data entry each month.
+
+## 2.3 Time Series Plot
+```{r}
+plot(ukHousePrices_dataframe$ds, ukHousePrices_dataframe$y,
+     type = "l",
+     col = "blue",
+     main = "UK Average House Prices 1990-2025",
+     xlab = "Year",
+     ylab = "Average Price (£)")
+```
+
+The plot above shows a clear upward trend in the average UK house prices from 1990 to 2025, with prices increasing from approximately £53000 to over £270000 over the period, which is approximately a 410% increase. In the early 1990s, the prices remained relatively flat reflecting the housing market downturn of that period. Prices then began to rise sharply during the late 1990s and early 2000s. However a clear dip is visible between 2008 to 2010, which corresponds to the global financial crisis, where consumer confidence dropped significantly. Post financial crisis, there was an upturn in the prices where prices were recovering steadily until 2020, where there is a clear spike in the average UK house prices, which aligns with the government stamp duty holiday introduced during the coronavirus pandemic. From around 2022 onwards prices began to stagnate and slightly decline, this reflects the increase in interest rates used to combat inflation. The rising interest rates lead to mortgages being less affordable, potentially discouraging potential buyers.
+
+# **3. Exploring the Data**
+Before fitting the model it is important to explore the data visually to find any patterns or trends present in the time series.
+
+## 3.1 Decomposition
+```{r}
+ukHousePrices_ts <- ts(ukHousePrices_dataframe$y,
+                       start = c(1990, 1),
+                       frequency = 12)
+ukHousePrices_decomp <- decompose(ukHousePrices_ts)
+plot(ukHousePrices_decomp)
+```
+
+The `decompose` function is used to split the time series into three separate components: trend, seasonal and random. This makes it easier to analyse each component individually. This can be analysed visually with these plots displayed above. 
+
+### 3.1.1 Observed
+The top plot shows the original `ukHousePrices` data, showing a clear upward trend throughout the years. Some fluctuations are evident throughout the time series, which are due to past events.
+
+### 3.1.2 Trend
+The second plot shows a somewhat smooth and long term upward trend of average UK house prices. Prices grew slowly during the 1990s before accelerating rapidly during the early 2000s property boom. A clear dip is visible around 2008 to 2010, due to the global financial crisis. After this, prices began to recover and rise steadily. In 2020 there was a sharp rise in prices due to stamp duty holiday. From 2022 onwards the average prices stagnated and declined due to rising interest rates.
+
+### 3.1.3 Seasonal
+The third plot shows a clear and consistent annual pattern that is repeating identically every year throughout the entire 35 year period. House prices tend to peak towards the middle of the year, roughly around the summer period,likely June, July and August, where demand for housing is highest as families may prefer to move before the new academic year. Average UK house prices are seen at the lowest earlier in the year around January, February and December. This may be due to property market being less active during the Christmas period. The seasonal price changes are not significant in size compared to the overall trend as a clear and obvious seasonal pattern is not spotted in the observed component.
+
+### 3.1.4 Random
+The final plot shows the remainder after removing trend and seasonality from the raw data. The values mostly fluctuate around zero throughout the period, but there are some notable exceptions. A significant negative spike is visible around 2008 corresponding to the financial crisis. Very large spikes are also seen around 2021 and 2022, which is likely reflecting a change in market condition due to the stamp duty holiday and later on significant interest rate increases. These random fluctuations show that the average UK house prices are highly sensitive to external economic shocks that cannot be predicted by statistical models.
+
+# **4. Trend Analysis**
+To further analyse the upward trend that is observed in the data, a linear regression model is fitted with average UK house prices as the response variable and time as the predictor variable.
+
+## 4.1 Linear Regression Model
+```{r}
+ukHousePrices_lm <- lm(y ~ as.numeric(ds),
+                       data = ukHousePrices_dataframe)
+summary(ukHousePrices_lm)
+```
+
+The summary of this linear regression model shows that there is an upwards trend in average house price figures. The slope coefficient of £18.09 per day suggests that average UK house prices increased by approximately £6,600 per year on average throughout the 35 year period. It has a p-value of `< 2e-16`, which is an extremely small number therefore making the trend highly significant. The positive slope coefficient suggests that the monthly average UK house price is rising. The $R^2$ value of 0.9604 suggests that this is an exceptionally strong fit.
+
+## 4.2 Regression Plot
+```{r}
+plot(ukHousePrices_dataframe$ds, ukHousePrices_dataframe$y,
+     type = "l",
+     col  = "blue",
+     main = "Average UK House Prices with Trend Line 1990-2025",
+     xlab = "Year",
+     ylab = "Average Price (£)")
+abline(ukHousePrices_lm, col = "red", lwd = 2)
+legend("topleft",
+       legend = c("Actual", "Trend"),
+       col    = c("blue", "red"),
+       lty    = 1)
+```
+
+The plot above shows the actual average UK house prices vs the fitted regression line.
+
+The trend line shows a positive direction, but it only shows the overall growth and not the fluctuations like the actual plot shows. There are periods where the actual average UK house price is less than the trend line around 1990-1995 and 2009-2015, and rises above the trend line around 2005-2008. This fit seems reasonable for predicting future average UK house prices in the long term but does not completely capture the volatility of the UK housing market. 
+
+# **5. Prophet Forecast**
+
+## 5.1 Fitting the Model
+
+```{r message=FALSE, warning=FALSE}
+ukHousePrices_model <- prophet(ukHousePrices_dataframe)
+
+ukHousePrices_future1 <- make_future_dataframe( ukHousePrices_model,
+                                                periods = 120,
+                                                freq = "month")
+
+ukHousePrices_future2 <- make_future_dataframe( ukHousePrices_model,
+                                                periods = 240,
+                                                freq = "month")
+
+ukHousePrices_forecast1 <- predict(ukHousePrices_model, ukHousePrices_future1)
+
+ukHousePrices_forecast2 <- predict(ukHousePrices_model, ukHousePrices_future2)
+```
+
+Above are the codes that are used to fit the `ukHousePrices_dataframe` to the Prophet model. I have created two forecasts with different time-frames. `ukHousePrices_forecast1` for the next 10 years (120 months) and `ukHousePrices_forecast2` for the next 20 years (240 months).
+
+## 5.2 Forecast Plots
+
+```{r}
+plot(ukHousePrices_model, ukHousePrices_forecast1,
+     xlab = "Year",
+     ylab = "Average Price (£)")
+```
+
+```{r}
+plot(ukHousePrices_model, ukHousePrices_forecast2,
+     xlab = "Year",
+     ylab = "Average Price (£)")
+```
+
+The plots above show the Prophet forecast for 10 years and 20 years after December 2025 respectively. The black dots represent the actual data points, the blue line is the fitted and forecast values. The blue region represents the confidence interval.
+
+Both forecast plots show that Prophet has caught onto the upward trend and seasonal pattern of the `ukHousePrices` dataset. The 10 year forecast plot predicts that average house prices will reach approximately £370000 and the 20 year plot predicts it will reach approximately £425000. Both blue regions begin to widen as time goes by the forecast period, implying that Prophet's confidence decreases in its forecast due to the volatility and sensitivity of the UK housing market. The 20 year forecast has the wider blue region compared to the 10 year forecast since there is greater uncertainty for longer forecast periods.
+
+## 5.3 Components
+
+```{r, warning=FALSE}
+prophet_plot_components(ukHousePrices_model, ukHousePrices_forecast1)
+
+prophet_plot_components(ukHousePrices_model, ukHousePrices_forecast2)
+```
+
+The plots above break down each forecast into individual components, which are the overall trend and the yearly seasonal pattern. Since this dataset contains monthly data, Prophet only produces two components.
+
+The trend components for both forecast time frames are identical. The plot shows strong upwards trend, and suggests that the trend is not linear, it reflect the changing economic conditions such as the dip in 2008. The longer forecast of 20 years has greater uncertainty.
+
+The seasonality components for both plots are also identical. House prices are at their highest in March. This may be due to buyers returning to the market after the winter break. And the lowest average house prices are seen after the Christmas period in January and February.
+
+## 5.4 Forecast Limitations
+
+Prophet has produced a reasonable forecast for the `ukHousePrices` dataset but there are several limitations to consider. Prophet assumes that the future will follow the historical patterns from the dataset, but this may not be the case. Unexpected events can occur such as economic recessions, changes in government policy, interest rate changes by the Bank of England and global events such as COVID-19 can all cause significant changes to average UK house prices. These factors are not taken into account and also cannot be easily predicted. The decline from 2022 onwards was due to rising interest rates, which is an example of an event that prophet cannot show in its forecast. Ultimately, Prophet could not have anticipated these factors just from historical data.
+
+# **6. Conclusion**
+
+The data shows a long term upward trend in the average UK house prices throughout the period in the `ukHousePrices` dataset. There was approximately a 410% increase in average UK house prices from 1990 to 2025. A consistent seasonal pattern was identified for every yearly cycle, with average house prices peaking during the spring period in March and April and house prices are lowest in January and February. The linear regression model showed that the trend was statistically significant with an $R^2$ value of 0.9604, suggesting 96.04% of the variation is explained by the linear trend. From the Prophet forecast, there is a clear continuous long-term upward trend. Additionally, it successfully picked up the seasonality and the trend of the data, to make a forecast where the average UK house prices continue to increase. However there are limitations as the house prices may fall or rise significantly due to unexpected events.
+
+# **References**
+
+- Dataset: <https://landregistry.data.gov.uk/app/ukhpi/browse?from=1990-01-01&location=http%3A%2F%2Flandregistry.data.gov.uk%2Fid%2Fregion%2Funited-kingdom&to=2026-02-01&lang=en>
+
+- Image source: <https://www.pexels.com/photo/elegant-georgian-terrace-houses-in-london-29579462/>
+
+- Meta's Prophet tool: <https://facebook.github.io/prophet/docs/quick_start.html#r-api>
